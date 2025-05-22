@@ -15,7 +15,7 @@ import argparse
 from datetime import datetime
 
 # 自作モジュールのインポート
-from sensors import SensorSimulator
+from sensors import SensorSimulator, RealSensor
 from aws_iot_client import AWSIoTClient
 
 
@@ -41,8 +41,19 @@ class IoTDevice:
         # 終了フラグ
         self.running = False
         
-        # センサーシミュレータの初期化
-        self.sensor_simulator = SensorSimulator(self.config)
+        # センサーの初期化
+        # デバイスタイプに基づいて実際のセンサーかシミュレータを選択
+        if self.config["device"]["type"] == "raspberry_pi":
+            try:
+                self.logger.info("実際のセンサーを使用します")
+                self.sensor = RealSensor(self.config)
+            except Exception as e:
+                self.logger.warning(f"実際のセンサーの初期化に失敗しました: {str(e)}")
+                self.logger.info("シミュレータに切り替えます")
+                self.sensor = SensorSimulator(self.config)
+        else:
+            self.logger.info("シミュレータを使用します")
+            self.sensor = SensorSimulator(self.config)
         
         # AWS IoTクライアントの初期化
         self.aws_iot_client = AWSIoTClient(self.config)
@@ -144,7 +155,7 @@ class IoTDevice:
         try:
             while self.running:
                 # センサーデータの読み取り
-                sensor_data = self.sensor_simulator.read_sensors()
+                sensor_data = self.sensor.read_sensors()
                 
                 # データの送信
                 if self.aws_iot_client.publish_data(sensor_data):

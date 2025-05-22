@@ -2,3 +2,4 @@ AWSIoTPythonSDK>=1.4.9
 boto3>=1.26.0
 python-dotenv>=0.21.0
 requests>=2.28.1
+adafruit-circuitpython-tcs34725

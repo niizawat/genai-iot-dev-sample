@@ -11,14 +11,15 @@
         "ca_path": "certs/AmazonRootCA1.pem"
     },
     "device": {
-        "type": "dummy",
+        "type": "raspberry_pi",
         "location": "room1",
         "sampling_interval": 5,
         "sensors": [
             "temperature",
             "humidity",
             "pressure",
-            "light"
+            "light",
+            "color"
         ]
     },
     "logging": {

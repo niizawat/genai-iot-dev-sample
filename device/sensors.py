@@ -2,13 +2,75 @@
 # -*- coding: utf-8 -*-
 
 """
-センサーデータシミュレーションモジュール
+センサーデータシミュレーションモジュールおよび実際のセンサー読み取りモジュール
 """
 
 import random
 import time
 import json
+import board
+import busio
 from datetime import datetime
+import adafruit_tcs34725
+
+
+class TCS34725ColorSensor:
+    """
+    TCS34725カラーセンサーからデータを読み取るクラス
+    """
+
+    def __init__(self):
+        """
+        コンストラクタ
+        """
+        # I2Cバスの初期化
+        self.i2c = busio.I2C(board.SCL, board.SDA)
+        # TCS34725センサーの初期化
+        try:
+            self.sensor = adafruit_tcs34725.TCS34725(self.i2c)
+            # センサーの設定
+            self.sensor.integration_time = 50  # ミリ秒
+            self.sensor.gain = 4  # ゲイン設定 (1, 4, 16, 60)
+            print("TCS34725カラーセンサーを初期化しました")
+            self.initialized = True
+        except Exception as e:
+            print(f"TCS34725センサーの初期化に失敗しました: {str(e)}")
+            self.initialized = False
+
+    def read_color(self):
+        """
+        カラーセンサーから色データを読み取る
+        
+        Returns:
+            dict: 色データ (RGB値、色温度、明るさ)
+        """
+        if not self.initialized:
+            return {
+                "r": 0, "g": 0, "b": 0,
+                "color_temp": 0,
+                "lux": 0
+            }
+            
+        try:
+            # RGB値の取得
+            r, g, b, c = self.sensor.color_raw
+            # 色温度の取得
+            color_temp = self.sensor.color_temperature
+            # 明るさの取得
+            lux = self.sensor.lux
+            
+            return {
+                "r": r, "g": g, "b": b,
+                "color_temp": color_temp,
+                "lux": lux
+            }
+        except Exception as e:
+            print(f"カラーセンサーの読み取りに失敗しました: {str(e)}")
+            return {
+                "r": 0, "g": 0, "b": 0,
+                "color_temp": 0,
+                "lux": 0
+            }
 
 
 class SensorSimulator:
@@ -105,24 +167,98 @@ class SensorSimulator:
         return readings
 
 
+class RealSensor:
+    """
+    実際のセンサーからデータを読み取るクラス
+    """
+
+    def __init__(self, config):
+        """
+        コンストラクタ
+        
+        Args:
+            config (dict): 設定情報
+        """
+        self.device_config = config["device"]
+        self.device_type = self.device_config["type"]
+        self.location = self.device_config["location"]
+        self.available_sensors = self.device_config["sensors"]
+        
+        # カラーセンサーの初期化
+        self.color_sensor = None
+        if "color" in self.available_sensors:
+            self.color_sensor = TCS34725ColorSensor()
+        
+        print(f"実際のセンサーを初期化しました。利用可能なセンサー: "
+              f"{', '.join(self.available_sensors)}")
+
+    def read_sensors(self):
+        """
+        全センサーの値を読み取る
+        
+        Returns:
+            dict: センサー値のディクショナリ
+        """
+        timestamp = datetime.utcnow().isoformat() + "Z"
+        readings = {
+            "device_id": f"{self.device_type}_{self.location}",
+            "timestamp": timestamp,
+            "location": self.location,
+            "readings": {}
+        }
+        
+        # カラーセンサーの値を読み取る
+        if self.color_sensor and "color" in self.available_sensors:
+            color_data = self.color_sensor.read_color()
+            readings["readings"]["color"] = {
+                "r": color_data["r"],
+                "g": color_data["g"],
+                "b": color_data["b"],
+                "color_temp": color_data["color_temp"],
+                "lux": color_data["lux"],
+                "unit": "RGB"
+            }
+        
+        return readings
+
+
 # テスト用コード
 if __name__ == "__main__":
     # テスト用の設定
     test_config = {
         "device": {
-            "type": "dummy",
+            "type": "raspberry_pi",
             "location": "test_room",
             "sampling_interval": 2,
-            "sensors": ["temperature", "humidity", "pressure", "light", "motion"]
+            "sensors": ["color"]
         }
     }
     
-    # センサーシミュレータのインスタンス化
-    simulator = SensorSimulator(test_config)
-    
-    # 10回センサー値を読み取ってみる
-    for i in range(10):
-        data = simulator.read_sensors()
-        print(f"読み取り {i+1}:")
-        print(json.dumps(data, indent=2, ensure_ascii=False))
-        time.sleep(1)
+    # 実際のセンサーを使用する場合
+    try:
+        sensor = RealSensor(test_config)
+        # 5回センサー値を読み取ってみる
+        for i in range(5):
+            data = sensor.read_sensors()
+            print(f"読み取り {i+1}:")
+            print(json.dumps(data, indent=2, ensure_ascii=False))
+            time.sleep(1)
+    except Exception as e:
+        print(f"実際のセンサーの使用中にエラーが発生しました: {str(e)}")
+        
+        # エラーが発生した場合はシミュレータを使用
+        print("シミュレータに切り替えます...")
+        sim_config = {
+            "device": {
+                "type": "dummy",
+                "location": "test_room",
+                "sampling_interval": 2,
+                "sensors": ["temperature", "humidity", "pressure", "light", "motion"]
+            }
+        }
+        simulator = SensorSimulator(sim_config)
+        for i in range(5):
+            data = simulator.read_sensors()
+            print(f"シミュレータ読み取り {i+1}:")
+            print(json.dumps(data, indent=2, ensure_ascii=False))
+            time.sleep(1)
